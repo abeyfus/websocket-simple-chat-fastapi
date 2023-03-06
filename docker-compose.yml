@@ -1,0 +1,11 @@
+version: "3.4"
+
+services:
+  chat:
+    build:
+      context: .
+    image: chat
+    ports:
+      -  "${APP_PORT:-8000}:8000"  # runserver
+    volumes:
+      - .:/opt:cached
