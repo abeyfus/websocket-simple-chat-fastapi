@@ -34,9 +34,13 @@ class ConnectionManager:
         with suppress(KeyError):
             del USERS[websocket]
 
-    async def send_message(self, chatname: str, message):
+    async def send_message(self, chatname: str, message: str):
         for connection in self.active_connections[chatname]:
             await connection.send_text(message)
+
+    async def send_file(self, chatname: str, data: bytes):
+        for connection in self.active_connections[chatname]:
+            await connection.send_bytes(data)
 
 
 manager = ConnectionManager()
@@ -57,33 +61,43 @@ async def websocket_endpoint(websocket: WebSocket, chatname: str):
     await manager.connect(websocket, chatname)
     try:
         while True:
-            text_data = await websocket.receive_text()
+            message = await websocket.receive()
+            websocket._raise_on_disconnect(message)
+            if 'text' in message:
+                text_data = message['text']
 
-            with suppress(json.decoder.JSONDecodeError, KeyError):
-                text_data_json = json.loads(text_data)
+                with suppress(json.decoder.JSONDecodeError, KeyError):
+                    text_data_json = json.loads(text_data)
 
-                logger.info(text_data_json)
+                    logger.info(text_data_json)
 
-                if command := text_data_json.get('command'):
-                    if command == 'auth':
-                        user = text_data_json['username']
-                        if user not in USERS.values():
-                            USERS[websocket] = user
-                        else:
-                            await websocket.send_text(
-                                json.dumps({'type': 'error_message', 'error': f'User `{user}` already exists'})
-                            )
-                    elif command == 'sendmessage':
-                        user = USERS.get(websocket)
-                        if user:
-                            message = text_data_json['message']
+                    if command := text_data_json.get('command'):
+                        if command == 'auth':
+                            user = text_data_json['username']
+                            if user not in USERS.values():
+                                USERS[websocket] = user
+                            else:
+                                await websocket.send_text(
+                                    json.dumps({'type': 'error_message', 'error': f'User `{user}` already exists'})
+                                )
+                        elif command == 'sendmessage':
+                            user = USERS.get(websocket)
+                            if user:
+                                message = text_data_json['message']
 
-                            # Send message to room group
-                            await manager.send_message(
-                                chatname, json.dumps({'username': user, 'message': message})
-                            )
-                            if chatname not in HISTORY:
-                                HISTORY[chatname] = []
-                            HISTORY[chatname].append({'username': user, 'message': message})
+                                # Send message to room group
+                                await manager.send_message(
+                                    chatname, json.dumps({'username': user, 'message': message})
+                                )
+                                if chatname not in HISTORY:
+                                    HISTORY[chatname] = []
+                                HISTORY[chatname].append({'username': user, 'message': message})
+            elif 'bytes' in message:
+                await manager.send_message(
+                    chatname, json.dumps({'username': user, 'message': 'user sent file:'})
+                )
+                bytes_data = message['bytes']
+                await manager.send_file(chatname, bytes_data)
+
     except WebSocketDisconnect:
         manager.disconnect(websocket, chatname)

@@ -9,6 +9,10 @@
     <input id="chat-message-input" type="text" size="100"><br>
     <input id="chat-message-submit" type="button" value="Send">
     <script id="room-name" type="application/json">{{ chatname }}</script>
+    <br>
+    <br>
+    <input type="file" id="filename" />
+    <input type="button" value="Upload" onclick="sendFile()" />
     <script>
         const roomName = document.getElementById('room-name').textContent;
 
@@ -21,9 +25,14 @@
         );
 
         chatSocket.onmessage = function(e) {
-            const data = JSON.parse(e.data);
-            if(typeof data.username !== "undefined") {
-                document.querySelector('#chat-log').value += (data.username + '> ' + data.message + '\n');
+            if (!(e.data instanceof Blob)) {
+                const data = JSON.parse(e.data);
+                if(typeof data.username !== "undefined") {
+                    document.querySelector('#chat-log').value += (data.username + '> ' + data.message + '\n');
+                }
+            } else {
+                document.querySelector('#chat-log').value += e.data
+                document.querySelector('#chat-log').value += '\n';
             }
         };
 
@@ -49,6 +58,21 @@
             }));
             messageInputDom.value = '';
         };
+
+        function sendFile() {
+            var file = document.getElementById('filename').files[0];
+            var reader = new FileReader();
+            var rawData = new ArrayBuffer();
+
+            reader.loadend = function() {}
+
+            reader.onload = function(e) {
+                rawData = e.target.result;
+                chatSocket.send(rawData);
+            }
+
+            reader.readAsArrayBuffer(file);
+        }
     </script>
 </body>
 </html>
